@@ -1,0 +1,26 @@
+{
+    admin off
+}
+
+{$APP_DOMAIN} {
+    encode zstd gzip
+
+    header {
+        -Server
+        X-Content-Type-Options nosniff
+    }
+
+    reverse_proxy app:8000 {
+        # Replace any client-supplied forwarding identity with values observed
+        # by the trusted edge. The application accepts these only from the
+        # private proxy network configured in TRUSTED_PROXY_NETWORKS.
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
+    }
+
+    log {
+        output stdout
+        format json
+    }
+}
