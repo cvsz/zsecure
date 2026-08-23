@@ -3,6 +3,7 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -79,3 +80,36 @@ def test_parameterized_lookup_resists_sql_injection():
         json={"email": "' OR 1=1 --@example.com", "password": "irrelevant"},
     )
     assert r.status_code in (401, 422)
+
+
+def test_untrusted_peer_cannot_spoof_forwarded_client_ip():
+    assert (
+        main.extract_client_ip(
+            peer_ip="198.51.100.9",
+            forwarded_for="203.0.113.8",
+            trusted_proxy_networks=("10.0.0.0/8",),
+        )
+        == "198.51.100.9"
+    )
+
+
+def test_trusted_proxy_uses_first_valid_forwarded_client_ip():
+    assert (
+        main.extract_client_ip(
+            peer_ip="10.0.0.2",
+            forwarded_for="203.0.113.8, 10.0.0.3",
+            trusted_proxy_networks=("10.0.0.0/8",),
+        )
+        == "203.0.113.8"
+    )
+
+
+def test_production_shared_rate_limit_requires_redis():
+    with pytest.raises(RuntimeError, match="RATE_LIMIT_REDIS_URL"):
+        main.validate_runtime_configuration(
+            app_env="production",
+            db_path=Path("/data/app.db"),
+            temp_dir=Path("/tmp"),
+            require_shared_rate_limit=True,
+            rate_limit_redis_url="",
+        )
