@@ -1,7 +1,13 @@
 import importlib
 import os
+import sys
+from pathlib import Path
 
 from fastapi.testclient import TestClient
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 TEST_DB = "/tmp/secure_webapp_test.db"
 os.environ["APP_ENV"] = "test"
