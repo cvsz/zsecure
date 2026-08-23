@@ -1,5 +1,25 @@
-# Replace or extend ownership rules for generated repositories.
+# Secure Web App Master ownership
 * @cvsz
 
+# Security-sensitive application code
+/app/ @cvsz
+/tests/ @cvsz
+/requirements*.txt @cvsz
+
+# CI, dependency automation, and repository governance
 /.github/ @cvsz
+
+# Deployment, installer, and operations surfaces
+/Dockerfile @cvsz
+/compose.yaml @cvsz
+/Caddyfile @cvsz
+/install.sh @cvsz
+/uninstall.sh @cvsz
+/scripts/ @cvsz
+
+# Security architecture and reporting
 /SECURITY.md @cvsz
+/IMPLEMENTATION-CHECKLIST.md @cvsz
+/docs/security/ @cvsz
+/docs/adr/ @cvsz
+/docs/operations/ @cvsz
