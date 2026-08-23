@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import logging
 import os
 import secrets
@@ -18,6 +19,8 @@ from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Request, Re
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from redis import Redis
+from redis.exceptions import RedisError
 
 APP_ENV = os.getenv("APP_ENV", "development")
 DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "data" / "secure_webapp.db"
@@ -27,6 +30,17 @@ SESSION_COOKIE = "__Host-session" if APP_ENV == "production" else "session"
 SESSION_TTL_SECONDS = int(os.getenv("SESSION_TTL_SECONDS", "3600"))
 MAX_BODY_BYTES = int(os.getenv("MAX_BODY_BYTES", "1048576"))
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+TRUSTED_PROXY_NETWORKS = tuple(
+    item.strip()
+    for item in os.getenv("TRUSTED_PROXY_NETWORKS", "").split(",")
+    if item.strip()
+)
+RATE_LIMIT_REDIS_URL = os.getenv("RATE_LIMIT_REDIS_URL", "").strip()
+REQUIRE_SHARED_RATE_LIMIT = os.getenv("REQUIRE_SHARED_RATE_LIMIT", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+}
 
 logger = logging.getLogger("secure_webapp")
 logging.basicConfig(
@@ -41,17 +55,62 @@ app = FastAPI(
     redoc_url=None,
 )
 
-# Demo-only, single-process limiter. Use a shared store (e.g. Redis) in multi-instance deployments.
+# Single-process fallback for development. Production multi-instance deployments
+# enable REQUIRE_SHARED_RATE_LIMIT and use Redis instead.
 _rate_buckets: dict[str, deque[float]] = defaultdict(deque)
+_redis_client: Redis | None = (
+    Redis.from_url(
+        RATE_LIMIT_REDIS_URL,
+        decode_responses=True,
+        socket_connect_timeout=2,
+        socket_timeout=2,
+    )
+    if RATE_LIMIT_REDIS_URL
+    else None
+)
+
+
+def extract_client_ip(
+    peer_ip: str,
+    forwarded_for: str | None,
+    trusted_proxy_networks: tuple[str, ...],
+) -> str:
+    """Return forwarded client identity only when the direct peer is trusted."""
+    try:
+        peer = ipaddress.ip_address(peer_ip)
+    except ValueError:
+        return "unknown"
+
+    trusted = False
+    for network_text in trusted_proxy_networks:
+        try:
+            if peer in ipaddress.ip_network(network_text, strict=False):
+                trusted = True
+                break
+        except ValueError:
+            logger.error("Invalid TRUSTED_PROXY_NETWORKS entry")
+
+    if not trusted or not forwarded_for:
+        return str(peer)
+
+    for candidate in forwarded_for.split(","):
+        try:
+            return str(ipaddress.ip_address(candidate.strip()))
+        except ValueError:
+            continue
+    return str(peer)
 
 
 def client_key(request: Request) -> str:
-    # Do not trust X-Forwarded-For unless your trusted reverse proxy strips/sets it.
-    return request.client.host if request.client else "unknown"
+    peer_ip = request.client.host if request.client else "unknown"
+    return extract_client_ip(
+        peer_ip=peer_ip,
+        forwarded_for=request.headers.get("x-forwarded-for"),
+        trusted_proxy_networks=TRUSTED_PROXY_NETWORKS,
+    )
 
 
-def rate_limit(request: Request, limit: int = 30, window_seconds: int = 60) -> None:
-    key = client_key(request)
+def _local_rate_limit(key: str, limit: int, window_seconds: int) -> None:
     now = time.monotonic()
     bucket = _rate_buckets[key]
     while bucket and bucket[0] < now - window_seconds:
@@ -59,6 +118,53 @@ def rate_limit(request: Request, limit: int = 30, window_seconds: int = 60) -> N
     if len(bucket) >= limit:
         raise HTTPException(status_code=429, detail="Too many requests")
     bucket.append(now)
+
+
+def _shared_rate_limit(key: str, limit: int, window_seconds: int) -> None:
+    if _redis_client is None:
+        raise RedisError("Redis rate limiter is not configured")
+
+    window_id = int(time.time()) // window_seconds
+    redis_key = f"zsecure:rate:{window_seconds}:{window_id}:{key}"
+    try:
+        pipe = _redis_client.pipeline(transaction=True)
+        pipe.incr(redis_key)
+        pipe.expire(redis_key, window_seconds * 2)
+        result = pipe.execute()
+        count = int(result[0])
+    except RedisError as exc:
+        if REQUIRE_SHARED_RATE_LIMIT:
+            raise HTTPException(status_code=503, detail="Rate limiter unavailable") from exc
+        logger.exception("Shared rate limiter failed; using local fallback")
+        _local_rate_limit(key, limit, window_seconds)
+        return
+
+    if count > limit:
+        raise HTTPException(status_code=429, detail="Too many requests")
+
+
+def rate_limit(request: Request, limit: int = 30, window_seconds: int = 60) -> None:
+    key = client_key(request)
+    if _redis_client is not None:
+        _shared_rate_limit(key, limit, window_seconds)
+        return
+    _local_rate_limit(key, limit, window_seconds)
+
+
+def validate_runtime_configuration(
+    *,
+    app_env: str,
+    db_path: Path,
+    temp_dir: Path,
+    require_shared_rate_limit: bool,
+    rate_limit_redis_url: str,
+) -> None:
+    if app_env == "production" and (db_path == temp_dir or temp_dir in db_path.parents):
+        raise RuntimeError("Production DB_PATH must use persistent protected storage")
+    if app_env == "production" and require_shared_rate_limit and not rate_limit_redis_url:
+        raise RuntimeError(
+            "Production shared rate limiting requires RATE_LIMIT_REDIS_URL"
+        )
 
 
 @contextmanager
@@ -110,8 +216,18 @@ def init_db() -> None:
 
 @app.on_event("startup")
 def startup() -> None:
-    if APP_ENV == "production" and (DB_PATH == TEMP_DIR or TEMP_DIR in DB_PATH.parents):
-        raise RuntimeError("Production DB_PATH must use persistent protected storage")
+    validate_runtime_configuration(
+        app_env=APP_ENV,
+        db_path=DB_PATH,
+        temp_dir=TEMP_DIR,
+        require_shared_rate_limit=REQUIRE_SHARED_RATE_LIMIT,
+        rate_limit_redis_url=RATE_LIMIT_REDIS_URL,
+    )
+    if APP_ENV == "production" and REQUIRE_SHARED_RATE_LIMIT and _redis_client:
+        try:
+            _redis_client.ping()
+        except RedisError as exc:
+            raise RuntimeError("Production shared rate limiter is unavailable") from exc
     init_db()
 
 
@@ -237,7 +353,6 @@ async def security_middleware(request: Request, call_next):
     try:
         response = await call_next(request)
     except Exception:
-        # Log the exception server-side; never expose stack traces to clients.
         logger.exception("Unhandled application error")
         return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
@@ -304,7 +419,6 @@ def register(payload: RegisterRequest, request: Request):
             )
             user_id = int(cur.lastrowid)
     except sqlite3.IntegrityError:
-        # Avoid leaking whether a specific account exists in more sensitive deployments.
         raise HTTPException(status_code=409, detail="Account cannot be created") from None
     logger.info("security_event=account_created user_id=%s", user_id)
     return {"created": True}
@@ -381,7 +495,6 @@ def get_note(
     if note_id < 1:
         raise HTTPException(status_code=404, detail="Not found")
     with db() as conn:
-        # Object-level authorization is enforced in the query itself.
         row = conn.execute(
             "SELECT id, title, body FROM notes WHERE id = ? AND owner_id = ?",
             (note_id, user["id"]),
