@@ -1,111 +1,44 @@
-# About cvsz
+# About Secure Web App Master
 
-`cvsz` is a builder focused on AI-first software, developer platforms, automation, infrastructure, and production-grade systems.
+**Secure Web App Master (`zsecure`)** is a security-first full-stack web application starter designed to make secure development, deployment, maintenance, vulnerability management, and continuous verification part of the application lifecycle from the beginning.
 
-## Focus areas
+Rather than treating security as a final penetration-testing step, the project integrates **prevention → detection → remediation → testing → updating → verification → deployment** into one workflow.
 
-- AI coding tools and autonomous/agentic systems
-- AI application platforms and OpenAI-compatible integrations
-- Developer platforms, APIs, SDKs, and internal tooling
-- Platform engineering, infrastructure automation, CI/CD, and DevOps
-- Security-aware architecture, repository hardening, and engineering quality gates
-- Workflow automation, bots, social automation, and commerce integrations
-- Payment, wallet, ledger, and financial-system architecture
-- Media, streaming, multimodal, speech, image, OCR, and search systems
-- Gaming and interactive application infrastructure
-- OpenAPI tooling and service integration
+## What it includes
 
-## Current engineering interests
+The implementation combines a FastAPI backend, a lightweight browser frontend, and SQLite persistence with secure authentication and authorization controls. The current application includes Argon2 password hashing, server-side sessions, CSRF protection, object-level authorization, parameterized queries, strict Pydantic validation, security headers, request-size limits, rate limiting, protected error handling, and security-event logging.
 
-### AI and agents
+The automation layer adds:
 
-Building practical AI systems that combine coding agents, tool use, model routing, multimodal capabilities, automation, and production infrastructure.
+- One-command development, Docker, and Linux/systemd installation.
+- Ruff linting and formatting.
+- Bandit and CodeQL SAST.
+- Dependency vulnerability detection with `pip-audit`.
+- Dependabot updates for Python, Docker, and GitHub Actions.
+- Security regression tests for authentication, CSRF, authorization, validation, headers, and injection resistance.
+- CycloneDX SBOM generation.
+- CI security gates and installer validation.
+- Container hardening with non-root execution, dropped capabilities, read-only filesystem, resource limits, and `no-new-privileges`.
+- Linux service hardening through systemd sandboxing and least-privilege controls.
 
-Areas of interest include:
+## Security philosophy
 
-- coding assistants and autonomous coding workflows
-- multi-agent orchestration
-- tool and API integrations
-- OpenAI-compatible model providers
-- model fallback and routing strategies
-- text, image, speech, embeddings, OCR, search, and video capabilities
-- reusable agent and project generators
+Anything outside the current trust boundary may be manipulated. Browsers, API requests, identifiers, cookies, headers, submitted content, dependencies, and stored values originating from external systems must therefore be treated as untrusted until validated and authorized.
 
-### Platform engineering
+Security controls are enforced primarily server-side. The design favors deny-by-default authorization, least privilege, defense in depth, secure defaults, explicit validation, minimal exposure, and continuous verification.
 
-Designing reusable foundations for products and services with an emphasis on:
+## Automated lifecycle
 
-- modular service architecture
-- APIs and SDKs
-- containerized development and deployment
-- CI/CD automation
-- observability
-- security scanning
-- dependency automation
-- reproducible environments
-- scalable infrastructure
+**Develop → Scan → Find → Fix → Test → Audit → Update → Upgrade → Verify → Build → Deploy → Monitor → Repeat**
 
-### Automation and integrations
+Safe mechanical changes may be automated. High-impact dependency upgrades, authorization changes, architecture changes, and production security decisions remain reviewable rather than being blindly auto-applied.
 
-Projects and experiments include automation around platforms and services such as:
+## Deployment model
 
-- LINE
-- TikTok Shop
-- social and commerce workflows
-- OpenAPI-based services
-- bots and event-driven automation
+Local development uses a Python virtual environment. Docker Compose provides a hardened container path, while Linux hosts can install a sandboxed systemd service. Production-oriented paths bind Uvicorn to `127.0.0.1:8000`; a trusted reverse proxy or load balancer should provide TLS termination and public ingress controls.
 
-### Payments and financial systems
+## Intended use
 
-Interest in robust financial architecture including:
+`zsecure` is suitable as a secure application foundation, DevSecOps reference implementation, internal application template, security training project, or starting point for authorized security-sensitive web systems.
 
-- wallets
-- ledgers
-- accounting-style transaction models
-- payment services
-- auditability
-- safe transaction processing
-
-### Engineering philosophy
-
-Projects should aim to be:
-
-- secure by default
-- automation-first
-- modular and reusable
-- easy to operate
-- observable
-- testable
-- documented
-- production-oriented
-- friendly to incremental improvement
-
-Security and quality checks should be fixed rather than bypassed. Infrastructure, CI, documentation, and operational readiness are treated as part of the product rather than afterthoughts.
-
-## Public project themes
-
-The `cvsz` GitHub portfolio spans a broad collection of repositories covering areas such as:
-
-- AI tools and AI coding systems
-- agent generators and agent platforms
-- platform and infrastructure projects
-- automation and bot systems
-- payment and wallet systems
-- OpenAPI tooling
-- media and streaming projects
-- gaming projects
-- security, tracking, and operational tooling
-- general developer utilities
-
-## Preferred project direction
-
-The goal of this repository template is to provide a strong starting point for future projects so that new repositories begin with engineering discipline already in place: documentation, security policy, CI, dependency maintenance, release structure, issue/PR workflows, architecture guidance, and a clear implementation checklist.
-
-## GitHub
-
-- Handle: `cvsz`
-- Repository namespace: `github.com/cvsz`
-
----
-
-This profile intentionally contains only public-safe technical and project information. Personal, private, credential, account, and sensitive identity information should not be added to a public repository template.
+It remains a foundation. Application-specific business authorization, infrastructure, secrets management, threat models, monitoring, backups, incident response, availability design, and penetration testing must be designed for the actual production environment.
