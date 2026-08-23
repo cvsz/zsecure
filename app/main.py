@@ -13,7 +13,7 @@ from typing import Annotated
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
-from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Request, Response, status
+from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -192,7 +192,9 @@ def delete_session_cookie(response: Response) -> None:
     )
 
 
-def current_user(session: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None) -> sqlite3.Row:
+def current_user(
+    session: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
+) -> sqlite3.Row:
     if not session:
         raise HTTPException(status_code=401, detail="Authentication required")
     with db() as conn:
@@ -257,7 +259,6 @@ async def security_middleware(request: Request, call_next):
     return response
 
 
-
 if FRONTEND_DIR.exists():
     app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 
@@ -292,7 +293,10 @@ def register(payload: RegisterRequest, request: Request):
         password_hash = password_hasher.hash(payload.password)
         with db() as conn:
             cur = conn.execute(
-                "INSERT INTO users(email, password_hash, role, created_at) VALUES (?, ?, 'user', ?)",
+                (
+                    "INSERT INTO users(email, password_hash, role, created_at) "
+                    "VALUES (?, ?, 'user', ?)"
+                ),
                 (payload.email, password_hash, int(time.time())),
             )
             user_id = int(cur.lastrowid)
@@ -332,12 +336,15 @@ def login(payload: LoginRequest, request: Request, response: Response):
 @app.post("/logout", status_code=204)
 def logout(
     response: Response,
+    user: Annotated[sqlite3.Row, Depends(require_csrf)],
     session: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
-    user: sqlite3.Row = Depends(require_csrf),
 ):
     if session:
         with db() as conn:
-            conn.execute("DELETE FROM sessions WHERE token_hash = ?", (hash_session_token(session),))
+            conn.execute(
+                "DELETE FROM sessions WHERE token_hash = ?",
+                (hash_session_token(session),),
+            )
     delete_session_cookie(response)
     response.status_code = 204
     logger.info("security_event=logout user_id=%s", user["id"])
@@ -345,12 +352,15 @@ def logout(
 
 
 @app.get("/me", response_model=UserOut)
-def me(user: sqlite3.Row = Depends(current_user)):
+def me(user: Annotated[sqlite3.Row, Depends(current_user)]):
     return UserOut(id=user["id"], email=user["email"], role=user["role"])
 
 
 @app.post("/notes", response_model=NoteOut, status_code=201)
-def create_note(payload: NoteCreate, user: sqlite3.Row = Depends(require_csrf)):
+def create_note(
+    payload: NoteCreate,
+    user: Annotated[sqlite3.Row, Depends(require_csrf)],
+):
     with db() as conn:
         cur = conn.execute(
             "INSERT INTO notes(owner_id, title, body) VALUES (?, ?, ?)",
@@ -361,7 +371,10 @@ def create_note(payload: NoteCreate, user: sqlite3.Row = Depends(require_csrf)):
 
 
 @app.get("/notes/{note_id}", response_model=NoteOut)
-def get_note(note_id: int, user: sqlite3.Row = Depends(current_user)):
+def get_note(
+    note_id: int,
+    user: Annotated[sqlite3.Row, Depends(current_user)],
+):
     if note_id < 1:
         raise HTTPException(status_code=404, detail="Not found")
     with db() as conn:
@@ -376,7 +389,10 @@ def get_note(note_id: int, user: sqlite3.Row = Depends(current_user)):
 
 
 @app.delete("/notes/{note_id}", status_code=204)
-def delete_note(note_id: int, user: sqlite3.Row = Depends(require_csrf)):
+def delete_note(
+    note_id: int,
+    user: Annotated[sqlite3.Row, Depends(require_csrf)],
+):
     with db() as conn:
         cur = conn.execute(
             "DELETE FROM notes WHERE id = ? AND owner_id = ?",
