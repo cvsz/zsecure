@@ -5,6 +5,7 @@ import logging
 import os
 import secrets
 import sqlite3
+import tempfile
 import time
 from collections import defaultdict, deque
 from contextlib import contextmanager
@@ -19,7 +20,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 APP_ENV = os.getenv("APP_ENV", "development")
-DB_PATH = Path(os.getenv("DB_PATH", "/tmp/secure_webapp.db"))
+DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "data" / "secure_webapp.db"
+TEMP_DIR = Path(tempfile.gettempdir()).resolve()
+DB_PATH = Path(os.getenv("DB_PATH", str(DEFAULT_DB_PATH))).expanduser().resolve()
 SESSION_COOKIE = "__Host-session" if APP_ENV == "production" else "session"
 SESSION_TTL_SECONDS = int(os.getenv("SESSION_TTL_SECONDS", "3600"))
 MAX_BODY_BYTES = int(os.getenv("MAX_BODY_BYTES", "1048576"))
@@ -107,7 +110,7 @@ def init_db() -> None:
 
 @app.on_event("startup")
 def startup() -> None:
-    if APP_ENV == "production" and str(DB_PATH).startswith("/tmp/"):
+    if APP_ENV == "production" and (DB_PATH == TEMP_DIR or TEMP_DIR in DB_PATH.parents):
         raise RuntimeError("Production DB_PATH must use persistent protected storage")
     init_db()
 
