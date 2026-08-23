@@ -1,0 +1,22 @@
+services:
+  app:
+    build: .
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev
+    volumes:
+      - app-data:/data
+    environment:
+      APP_ENV: production
+      DB_PATH: /data/app.db
+    ports:
+      - "127.0.0.1:8000:8000"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 100
+    mem_limit: 256m
+
+volumes:
+  app-data:

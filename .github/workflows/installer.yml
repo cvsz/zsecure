@@ -1,0 +1,24 @@
+name: installer-validation
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate-installer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Shell syntax
+        run: |
+          bash -n install.sh
+          bash -n uninstall.sh
+          bash -n scripts/security_check.sh
+          bash -n scripts/security_fix.sh
+      - name: Bootstrap and security verification
+        run: ./install.sh --dev

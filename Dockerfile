@@ -1,7 +1,19 @@
-# Generic placeholder Dockerfile.
-# Replace with the runtime-specific build for the generated project.
-FROM alpine:3.20
+FROM python:3.14-slim
 
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    APP_ENV=production \
+    DB_PATH=/data/app.db
+
+RUN groupadd --system app && useradd --system --gid app --home /app app
 WORKDIR /app
-
-CMD ["sh", "-c", "echo 'Replace Dockerfile with your project runtime image and command.'"]
+COPY requirements.txt .
+RUN python -m pip install --upgrade pip && \
+    python -m pip install --requirement requirements.txt
+COPY app ./app
+COPY frontend ./frontend
+RUN mkdir -p /data && chown -R app:app /app /data
+USER app
+EXPOSE 8000
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-server-header", "--proxy-headers"]

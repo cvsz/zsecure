@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Secure Web App</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <main class="shell">
+    <h1>Secure Web App</h1>
+    <p class="muted">Hardened starter UI for the FastAPI backend.</p>
+    <section><h2>Register</h2><form id="register-form" autocomplete="off"><label>Email <input id="register-email" type="email" maxlength="254" required></label><label>Password <input id="register-password" type="password" minlength="14" maxlength="256" required></label><button type="submit">Create account</button></form></section>
+    <section><h2>Login</h2><form id="login-form"><label>Email <input id="login-email" type="email" maxlength="254" required></label><label>Password <input id="login-password" type="password" maxlength="256" required></label><button type="submit">Login</button></form><button id="logout" type="button">Logout</button></section>
+    <section><h2>Create note</h2><form id="note-form"><label>Title <input id="note-title" maxlength="120" required></label><label>Body <textarea id="note-body" maxlength="5000" required></textarea></label><button type="submit">Save note</button></form></section>
+    <pre id="status" aria-live="polite"></pre>
+  </main>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
